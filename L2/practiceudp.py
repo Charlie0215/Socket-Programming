@@ -34,11 +34,10 @@ class Server:
 
 	shared_folder = './server_shared_folder'
 
-	def __init__(self, filename='remotefile.txt'):
+	def __init__(self):
 		#self.shared_dir = path
 		if not os.path.exists(Server.shared_folder):
 			os.makedirs(Server.shared_folder)
-		self.remote_filename = filename
 		self.get_service_discovery_socket()
 		self.get_file_sharing_socket()
 		#self.process_message_forever()
@@ -49,8 +48,8 @@ class Server:
 			self.SDsocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 			self.SDsocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 			self.SDsocket.bind(Server.SD_SOCKET_ADDRESS)
-
 			print('Listening on service discovery message on port {} ...'.format(Server.SDPORT))
+
 		except Exception as msg:
 			print(msg)
 			sys.exit(1)
@@ -62,6 +61,8 @@ class Server:
 			self.FSsocket.bind(Server.FS_SOCKET_ADDRESS)
 			self.FSsocket.listen(Server.BACKLOG)
 			print('Listening on file sharing message on port {} ...'.format(Server.FSPORT))
+			print('-'*72)
+
 		except Exception as msg:
 			print(msg)
 			sys.exit(1)
@@ -78,6 +79,8 @@ class Server:
 			data = data.decode('utf-8')
 			if data == "SERVICE DISCOVERY":
 				print("Broadcast received: ", data, address)
+				print('-'*72)
+
 				#socket.sendto(string, address)
 				self.SDsocket.sendto('Dai and Wang\'s File Sharing Service on {} port {}'.format(Server.HOSTNAME, Server.FSPORT).encode(Server.MSG_ENCODING), address)
 			else:
@@ -108,13 +111,13 @@ class Server:
 		threadName = threading.currentThread().getName()
 		print(threadName,' - Connection received from ',address_port)
 		while True:
+
 			cmd = int.from_bytes(connection.recv(CMD_FIELD_LEN), byteorder='big')
 			print(cmd)
 			if cmd == CMD['PUT']:
 				try:
 					self.put_file(connection, address_port)
 				except Exception as msg:
-					print('*'*30)
 					print(msg)
 					return
 
@@ -125,11 +128,20 @@ class Server:
 					#print('No connection')
 					print(msg)
 					return
+
 			elif cmd == CMD['GET']:
-				self.get_file(connection, address_port)
+				try:
+					self.get_file(connection, address_port)
+				except Exception as msg:
+					connection.close()
+					print(msg)
+					return
+
 			else:
-				print('Incorrect Command.')
+				print('Close connection')
+				connection.close()
 				return
+				
 
 	########################################################################
 	# for rlist
@@ -140,15 +152,18 @@ class Server:
 		if not os.listdir(Server.shared_folder):
 			print('Folder Empty.')
 			msg = 'Empty.'
+			print('-'*72)
 			string_bytes = msg.encode(Server.MSG_ENCODING)
 			#return
 		else:
 			for file in dirs:
-				string += file + ' '
+				string += file + '\n'
 			string_bytes = string.encode(Server.MSG_ENCODING)
 		try:
 			connection.sendall(string_bytes)
-			print('Sending: ', string)
+			print('Sending: ')
+			print(string)
+			print('-'*72)
 
 		except socket.error:
 			print('Closing client connection ...')
@@ -163,13 +178,17 @@ class Server:
 		filename = filename_bytes.decode(Server.MSG_ENCODING)
 		file_path = os.path.join(Server.shared_folder, filename)
 		
+		file = open(file_path, 'r').read()
+		'''
 		try:
 			file = open(file_path, 'r').read()
 		except FileNotFoundError:
 			print(Server.FILE_NOT_FOUND_MSG)
-			connection.close()
+			#connection.close()
+
 			#break
 			return
+		'''
 
 		# Encode the file contents into bytes, record its size and
 		# generate the file size field used for transmission
@@ -184,36 +203,28 @@ class Server:
 			# Send the packet to the connected client.
 			connection.sendall(pkt)
 			print('Sending file: ', filename)
+			print('-'*72)
 		except socket.error:
 			# If the client has closed the connection, close the
 			# socket on this end.
 			print('Closing client connection ...')
-			connection.close()
+			#connection.close()
 			#break
 			return
 
 	########################################################################
 	# for put
 	########################################################################
-	def socket_recv_size(self, length):
-		bytes = connection.recv(length)
-		if len(bytes) < length:
-			self.socket.close()
-			exit()
-		return(bytes)
-
 	def put_file(self, connection, address_port):
 		filename_bytes = connection.recv(Server.RECV_SIZE)
 		filename = filename_bytes.decode(Server.MSG_ENCODING)
 		file_path = os.path.join(Server.shared_folder, filename)
-		print(filename)
-
 		file_size_bytes = connection.recv(FILE_SIZE_FIELD_LEN)
+
 		if len(file_size_bytes) < FILE_SIZE_FIELD_LEN:
 			connection.close()
 			return
-		#return(bytes)
-		#file_size_bytes = self.socket_recv_size(FILE_SIZE_FIELD_LEN)
+
 		if len(file_size_bytes) == 0:
 			connection.close()
 			return
@@ -230,23 +241,20 @@ class Server:
 			# Keep doing recv until the entire file is downloaded.
 			while len(recvd_bytes_total) < file_size:
 				recvd_bytes_total += connection.recv(Server.RECV_SIZE)
-				# Create a file using the recieved filename and store the data.
-				
 			
 			print('Recieved {} bytes. Creating file: {}'.format(len(recvd_bytes_total), download_filename))
+			print('-'*72)
 			with open(download_filename_path, 'a') as f:
 				f.write(recvd_bytes_total.decode(Server.MSG_ENCODING))
 		except KeyboardInterrupt:
 			print()
 			exit(1)
 		
-
-
 ####################################################################################################################################
 # Client part
 ####################################################################################################################################
-
 class Client:
+
 	BROADCAST_ADDRESS = "255.255.255.255"
 	BROADCAST_PORT = 30000
 
@@ -257,11 +265,10 @@ class Client:
 
 	FILE_NOT_FOUND_MSG = "Error: Requested file is not available!"
 
-	def __init__(self, filename='remotefile.txt'):
+	def __init__(self):
 		#self.shared_dir = path
 		if not os.path.exists(Client.shared_folder):
 			os.makedirs(Client.shared_folder)
-		self.remote_filename = filename
 		self.get_service_discovery_socket()
 		self.get_file_sharing_socket()
 		self.get_console_input()
@@ -283,16 +290,13 @@ class Client:
 	def get_file_sharing_socket(self):
 		try:
 			self.FSsocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-			#print('Listening on file sharing message on port {} ...'.format(Server.FSPORT))
 		except Exception as msg:
 			print(msg)
 			sys.exit(1)
 
-
 	########################################################################
 	# for scan
 	########################################################################
-
 	def scan_server(self):
 		print('SERVICE DISCOVERY scan ...')
 		# Send a service scan boardcast. If a socket timeout occurs,
@@ -305,16 +309,14 @@ class Client:
 			# we can connect to its file sharing port.
 			self.SD_addr = address
 			print(recvd_bytes.decode(Server.MSG_ENCODING), 'found.', address)
+			print('-'*72)
 		except socket.timeout:
 			print('No service found')
 
 	########################################################################
 	# for connect
 	########################################################################
-	
 	def connect_server(self, address):
-		#addr = address.split(':')[0]
-		#port = int(address.split(':')[1])
 		try:
 			addr = address[0]
 			port = int(address[1])
@@ -325,10 +327,10 @@ class Client:
 		target_address = (addr,port)
 		self.FS_addr = target_address
 		print('Connecting to File Sharing Server ...')
-
 		try:
 			self.FSsocket.connect(target_address)
 			print('Connected!')
+			print('-'*72)
 
 		except Exception as msg:
 			print(msg)
@@ -340,20 +342,21 @@ class Client:
 		dirs = os.listdir(Client.shared_folder)
 		if not os.listdir(Client.shared_folder):
 			print('Folder empty.')
+			print('-'*72)
+
 		else:
 			for file in dirs:
 				print(file)
-
+			print('-'*72)
 
 	########################################################################
 	# for rlist
 	########################################################################
-
 	def get_list_send(self):
 		get_list_cmd = CMD['LIST'].to_bytes(CMD_FIELD_LEN, byteorder='big')
 		try:
 			self.FSsocket.sendto(get_list_cmd, self.FS_addr)
-			print('rlist')
+			print('Sending LIST command ... ')
 		except Exception as msg:
 			print(msg)
 			sys.exit(1)
@@ -368,15 +371,15 @@ class Client:
 			# zero bytes, the connection has been closed from the
 			# other end. In that case, close the connection on this
 			# end and exit.
-			#print(len(recvd_bytes))
+
 			if len(recvd_bytes) == 0:
 				print("Closing server connection ... ")
 				self.socket.close()
 				sys.exit(1)
-				
-				
-
-			print("Received: ", recvd_bytes.decode(Server.MSG_ENCODING))
+			
+			print("Received: ")
+			print(recvd_bytes.decode(Server.MSG_ENCODING))
+			print('-'*72)
 
 		except Exception as msg:
 			print(msg)
@@ -388,9 +391,6 @@ class Client:
 	########################################################################
 	def socket_recv_size(self, length):
 		bytes = self.FSsocket.recv(length)
-		if len(bytes) < length:
-			self.socket.close()
-			exit()
 		return(bytes)
 
 	def get_download(self, filename):
@@ -399,17 +399,20 @@ class Client:
 
 		# Create the packet filename field.
 		filename_field = filename.encode(Server.MSG_ENCODING)
-		#print(filename)
+
 		# Create the packet.
 		pkt = get_field + filename_field
 
 		# Send the request packet to the server
+
 		self.FSsocket.sendall(pkt)
 		
 		# Read the file size field.
 		file_size_bytes = self.socket_recv_size(FILE_SIZE_FIELD_LEN)
 		if len(file_size_bytes) == 0:
+			#raise Exception('Connection closed, Reconnecting...')
 			self.FSsocket.close()
+			
 			return
 
 		# Make sure that you interpret in in host byte order!!!!
@@ -434,7 +437,6 @@ class Client:
 			print()
 			exit(1)
 		
-
 	########################################################################
 	# for put
 	########################################################################
@@ -474,6 +476,7 @@ class Client:
 			# Send the packet to the connected client.
 			self.FSsocket.sendall(pkt)
 			print('Sending file: ', filename)
+			print('-'*72)
 		except socket.error:
 			# If the client has closed the connection, close the
 			# socket on this end.
@@ -482,9 +485,6 @@ class Client:
 			#break
 			return
 		
-
-
-
 	def get_console_input(self):
 		# We are connected to the FS, Prompt the user for what to do.
 
@@ -534,6 +534,9 @@ class Client:
 					try:
 						filename = connect_prompt_args[0]
 						self.put_upload(filename)
+						time.sleep(1)
+						self.get_list_send()
+						self.get_list_receive()
 					except Exception as msg:
 						print(msg)
 
@@ -542,34 +545,29 @@ class Client:
 					# a file
 					try:
 						filename = connect_prompt_args[0]
-					# filename is an array of the input filenames
+						# filename is an array of the input filenames
 						self.get_download(filename)
 						self.list_local_shared_folder()
 					except Exception as msg:
+
 						print(msg)
 
 				elif connect_prompt_cmd == 'bye':
 					# Disconnect from the FS
-					self.FSsocket.close()
+					try:
+						self.FSsocket.close()
+					except Exception as msg:
+						print(msg)
 					break
 
 				else:
 					print('Please input valid command')
-					pass
 				
-
-
 if __name__ == '__main__':
 
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-r', dest='role', type=str, required=True, help='server or client')
-	parser.add_argument('-p', dest='path', type=str, default='./share', help='shared folder path')
-	parser.add_argument('-f', dest='filename', type=str, default='', help='required filename')
 	args = parser.parse_args()
 
 	roles = {'client': Client,'server': Server}
-	roles[args.role](args.filename)
-
-
-
-
+	roles[args.role]()
