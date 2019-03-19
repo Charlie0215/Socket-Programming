@@ -38,10 +38,23 @@ class Server:
 		#self.shared_dir = path
 		if not os.path.exists(Server.shared_folder):
 			os.makedirs(Server.shared_folder)
-		self.get_service_discovery_socket()
-		self.get_file_sharing_socket()
-		#self.process_message_forever()
-		self.receive_forever()
+		else: 
+			self.print_files() ## ADDED 2019-03-17
+			self.get_service_discovery_socket()
+			self.get_file_sharing_socket()
+			#self.process_message_forever()
+			self.receive_forever()
+
+	def print_files(self): ## ADDED 2019-03-17
+		dirs = os.listdir(Server.shared_folder)
+		if not os.listdir(Server.shared_folder):
+			print('Folder empty')
+			print('-'*72)
+		else:
+			print('Available files in server:')
+			for file in dirs:
+				print(file)
+			print('-'*72)
 
 	def get_service_discovery_socket(self):
 		try:
@@ -79,10 +92,12 @@ class Server:
 			data = data.decode('utf-8')
 			if data == "SERVICE DISCOVERY":
 				print("Broadcast received: ", data, address)
-				print('-'*72)
+			
 
 				#socket.sendto(string, address)
-				self.SDsocket.sendto('Dai and Wang\'s File Sharing Service on {} port {}'.format(Server.HOSTNAME, Server.FSPORT).encode(Server.MSG_ENCODING), address)
+				self.SDsocket.sendto('Dai and Wang\'s File Sharing Service on {} port {}'.format(Server.HOSTNAME, Server.FSPORT).encode(Server.MSG_ENCODING) \
+					, address)
+				print('-'*72)
 			else:
 				pass
 
@@ -178,7 +193,7 @@ class Server:
 		filename = filename_bytes.decode(Server.MSG_ENCODING)
 		file_path = os.path.join(Server.shared_folder, filename)
 		
-		file = open(file_path, 'r').read()
+		file_bytes = open(file_path, 'rb').read()
 		'''
 		try:
 			file = open(file_path, 'r').read()
@@ -192,7 +207,7 @@ class Server:
 
 		# Encode the file contents into bytes, record its size and
 		# generate the file size field used for transmission
-		file_bytes = file.encode(Server.MSG_ENCODING)
+		#file_bytes = file.encode(Server.MSG_ENCODING)
 		file_size_bytes = len(file_bytes)
 		file_size_field = file_size_bytes.to_bytes(FILE_SIZE_FIELD_LEN, byteorder='big')
 
@@ -244,8 +259,8 @@ class Server:
 			
 			print('Recieved {} bytes. Creating file: {}'.format(len(recvd_bytes_total), download_filename))
 			print('-'*72)
-			with open(download_filename_path, 'a') as f:
-				f.write(recvd_bytes_total.decode(Server.MSG_ENCODING))
+			with open(download_filename_path, 'wb') as f:
+				f.write(recvd_bytes_total)#.decode(Server.MSG_ENCODING))
 		except KeyboardInterrupt:
 			print()
 			exit(1)
@@ -320,8 +335,9 @@ class Client:
 		try:
 			addr = address[0]
 			port = int(address[1])
-		except Exception as msg:
+		except Exception as msg: ## ADDED: 2019-03-17
 			print(msg)
+			print('Please follow format: connect <IP address> <port>')
 
 			return
 		target_address = (addr,port)
@@ -449,6 +465,7 @@ class Client:
 		#print(filename)
 		# Create the packet.
 		pkt = get_field + filename_field
+		print(pkt)
 
 		# Send the request packet to the server
 		self.FSsocket.sendall(pkt)
@@ -508,6 +525,8 @@ class Client:
 					# Connect to the file sharing service at <IP address><port>
 					if not connect_prompt_args:
 						print('Please enter valid server address.')
+						## ADDED: 2019-03-17
+						print('Please follow format: connect <IP address> <port>')
 						pass
 					else:
 						self.connect_server(connect_prompt_args)
@@ -571,3 +590,7 @@ if __name__ == '__main__':
 
 	roles = {'client': Client,'server': Server}
 	roles[args.role]()
+
+
+
+
